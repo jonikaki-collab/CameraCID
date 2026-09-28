@@ -21,6 +21,17 @@
         android:textSize="14sp"
         android:text="Connecting..." />
 
+    <Button
+        android:id="@+id/btnInfo"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="8dp"
+        android:minWidth="0dp"
+        android:minHeight="0dp"
+        android:padding="8dp"
+        android:text="(i)" />
+
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

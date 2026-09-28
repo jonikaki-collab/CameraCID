@@ -81,6 +81,37 @@ wouldn't make sense for this hardware anyway. This is either a
 misremembering, or a feature specific to a different camera model/app
 variant not covered by these two decompiled builds.
 
+## Live `GETINFO` capture from this camera
+
+CameraCID has an `(i)` button (top-right) that sends `GETINFO` and shows
+the parsed response — it queries fresh every time it's tapped, nothing is
+cached. A real capture from this unit:
+
+```
+VENDOR:           APPOTECH
+CHIP:             AX3268
+VERSION:          EVJ-2_20190415a
+SSID:             Endoscope
+CHANNEL:          11
+SENSOR_DIRECTION: 16
+PIXEL:            0
+QUALITY:          2
+FRAMERATE:        24
+TYPE:             DRONE
+```
+
+`TYPE: DRONE` is the camera's own firmware directly confirming the
+drone/RC-SDK-rebrand finding below — this isn't just dead code in the
+Android app, the embedded firmware itself still self-identifies by its
+original product line.
+
+`SENSOR_DIRECTION` is almost certainly a fixed hardware/manufacturing
+constant (how the sensor die is physically mounted on the PCB, so the
+firmware knows whether to compensate for a flipped mount) rather than a
+live, changeable orientation state — consistent with `ROTATEIMG` being
+unimplemented on this unit and no `SETSENSORDIRECTION`-style command
+existing anywhere in the protocol.
+
 ## Other undocumented features found in the original app
 
 - **`RESETNET` is a live, fully wired protocol command with no UI trigger

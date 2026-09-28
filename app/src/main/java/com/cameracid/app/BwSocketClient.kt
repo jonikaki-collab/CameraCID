@@ -39,4 +39,34 @@ object BwSocketClient {
 
     fun rotateImage(host: String, port: Int, onResult: (String?) -> Unit = {}) =
         sendCommand(host, port, "ROTATEIMG", onResult)
+
+    fun getInfo(host: String, port: Int, onResult: (String?) -> Unit = {}) =
+        sendCommand(host, port, "GETINFO", onResult)
+
+    /**
+     * Parses the camera's response format (mirrors BWSocket.parseResponseString from the
+     * original app): a status line ("APPO/1.0 200 OK"), then "KEY:VALUE" lines.
+     */
+    fun parseResponse(raw: String): LinkedHashMap<String, String> {
+        val result = LinkedHashMap<String, String>()
+        val lines = raw.split("\r\n").filter { it.isNotBlank() }
+        if (lines.isEmpty()) return result
+
+        val statusParts = lines[0].split(" ", limit = 3)
+        if (statusParts.size >= 3) {
+            val protoVer = statusParts[0].split("/")
+            if (protoVer.size == 2) {
+                result["protocol"] = protoVer[0]
+                result["protocolVersion"] = protoVer[1]
+            }
+            result["statusCode"] = statusParts[1]
+            result["status"] = statusParts[2]
+        }
+
+        for (i in 1 until lines.size) {
+            val kv = lines[i].replace(" ", "").split(":", limit = 2)
+            if (kv.size == 2) result[kv[0]] = kv[1]
+        }
+        return result
+    }
 }

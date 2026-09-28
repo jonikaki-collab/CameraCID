@@ -11,6 +11,7 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import java.io.File
 import java.text.SimpleDateFormat
@@ -58,6 +59,10 @@ class MainActivity : AppCompatActivity() {
             takePhoto()
         }
 
+        findViewById<Button>(R.id.btnInfo).setOnClickListener {
+            showCameraInfo()
+        }
+
         findViewById<Button>(R.id.btnRecord).setOnClickListener { btn ->
             if (!recording) {
                 startRecording()
@@ -94,6 +99,46 @@ class MainActivity : AppCompatActivity() {
             onStatus = { status -> runOnUiThread { statusText.text = status } }
         )
         rtspClient?.start()
+    }
+
+    private fun showCameraInfo() {
+        Toast.makeText(this, "Querying camera...", Toast.LENGTH_SHORT).show()
+        BwSocketClient.getInfo(CAM_HOST, CAM_PORT) { resp ->
+            runOnUiThread {
+                if (resp == null) {
+                    AlertDialog.Builder(this)
+                        .setTitle("Camera Info")
+                        .setMessage("Failed to reach the camera (no response).")
+                        .setPositiveButton("OK", null)
+                        .show()
+                    return@runOnUiThread
+                }
+                val fields = BwSocketClient.parseResponse(resp)
+                val niceNames = linkedMapOf(
+                    "VENDOR" to "Vendor",
+                    "CHIP" to "Chip",
+                    "VERSION" to "Firmware version",
+                    "SSID" to "SSID",
+                    "status" to "Status"
+                )
+                val message = StringBuilder()
+                for ((key, label) in niceNames) {
+                    fields[key]?.let { message.append("$label: $it\n") }
+                }
+                for ((key, value) in fields) {
+                    if (key !in niceNames.keys && key !in setOf("protocol", "protocolVersion", "statusCode")) {
+                        message.append("$key: $value\n")
+                    }
+                }
+                if (message.isEmpty()) message.append(resp)
+
+                AlertDialog.Builder(this)
+                    .setTitle("Camera Info")
+                    .setMessage(message.toString().trim())
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+        }
     }
 
     private val uiBusy = java.util.concurrent.atomic.AtomicBoolean(false)
