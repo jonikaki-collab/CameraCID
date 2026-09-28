@@ -69,6 +69,54 @@ The original app's Rotate button was actually a purely local, client-side
 never a network call — CameraCID's Rotate button replicates that local
 behavior.
 
+## APN setting — not found
+
+An APN (cellular-style access point) configuration screen was expected to
+exist somewhere in the original app, based on memory of using it. A full
+search of both decompiled builds (`YCamera3` and the newer `GoSky 5.2.1`)
+turned up **no such feature anywhere** — no "APN" string in code or
+resources, no cellular-related preference key, no matching protocol
+command. The camera has no cellular modem, so a literal APN screen
+wouldn't make sense for this hardware anyway. This is either a
+misremembering, or a feature specific to a different camera model/app
+variant not covered by these two decompiled builds.
+
+## Other undocumented features found in the original app
+
+- **`RESETNET` is a live, fully wired protocol command with no UI trigger
+  anywhere in the app.** `BWSocket.resetNet()` sends it and
+  `RenameSSIDActivity` has full response handling for it (prompts to jump
+  to Android's WiFi settings afterward), but nothing in the app ever
+  calls it. Its actual effect on the camera (reboot the radio? factory
+  reset the WiFi credentials?) has **not** been tested and isn't
+  implemented in CameraCID — sending unknown commands to embedded camera
+  firmware risks bricking or resetting it in ways that are hard to
+  reverse, so this is left purely as a documented-but-unused finding.
+- **`SETPW` (set WiFi password) is a broken stub even in the original
+  app.** `BWSocket.setPassword(String)` records the intended request
+  state but never actually sends anything over the network — the
+  password argument is discarded. `RenameSSIDActivity`'s UI only exposes
+  an SSID field, never a password field, confirming this was never
+  reachable even by the vendor's own app. Not implemented in CameraCID.
+- **`GETINFO` returns more than just the SSID.** The original Help screen
+  uses it to show the camera's live firmware version. The full key set is
+  `CHIP`, `METHOD`, `SSID`, `VERSION`, `VENDOR` plus protocol/status
+  fields — only `SSID` had been exercised in earlier testing.
+- **This whole app is a rebrand of a drone/RC flight-controller SDK.**
+  `Settings.java` stores (and has getters/setters for) `altitude_hold`,
+  `trim_rudd`, `trim_ele`, `trim_ail` (rudder/elevator/aileron trim —
+  literal RC transmitter terms), `speed_limit`, and `right_hand_mode` (RC
+  stick-layout convention) — none of which are read or written anywhere
+  else in the camera app. This matches the earlier Ghidra finding of
+  `devicemode` ("Drone/Action DV/etc") and `preferred-video-type` options
+  baked into the native ijkplayer library: the vendor built one shared
+  native+Java stack for their drone product line and reused it for this
+  camera with the flight-control UI simply stripped out.
+- **Photo/Video list screens support multi-select batch delete**
+  (checkbox selection + "select all"), shared by `PhotoListActivity` and
+  `VideoListActivity` via a common base class. Minor, but not previously
+  documented here.
+
 ## Architecture
 
 - `RtspClient.kt` — RTSP handshake (OPTIONS/DESCRIBE/SETUP/PLAY/TEARDOWN)
