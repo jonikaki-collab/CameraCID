@@ -148,6 +148,30 @@ existing anywhere in the protocol.
   `VideoListActivity` via a common base class. Minor, but not previously
   documented here.
 
+## Connecting over WiFi + mobile data at the same time
+
+If the device also has cellular data (4G/5G) turned on, Android can route
+general app traffic over cellular instead of the camera's WiFi, since that
+WiFi network has no internet access and gets deprioritized as a route —
+this shows up as `failed to connect to /192.168.1.1 ... after 5000ms`.
+CameraCID works around this automatically by explicitly binding its RTSP
+and BWSocket sockets to the WiFi network via `ConnectivityManager`
+(`NetworkUtils.kt`), rather than relying on the OS's default route. If a
+connection still fails for some other reason, a dialog explains what to
+check (WiFi connection, Airplane Mode as a fallback) with a Retry button,
+instead of leaving a raw error string in the corner.
+
+## Video recording format
+
+Recording originally used a hand-rolled Motion-JPEG-in-AVI muxer
+(structurally valid — confirmed by extracting and independently decoding
+its frames), but that format has inconsistent playback support across the
+Android app ecosystem: no support at all in Google Photos, and a
+chroma-subsampling color quirk in VLC's AVI/MJPEG codec path. Recording
+now uses real MP4/H.264 via Android's built-in `MediaCodec` (hardware
+encoder) and `MediaMuxer` — still zero third-party dependencies, and
+plays correctly everywhere.
+
 ## Architecture
 
 - `RtspClient.kt` — RTSP handshake (OPTIONS/DESCRIBE/SETUP/PLAY/TEARDOWN)
@@ -159,10 +183,17 @@ existing anywhere in the protocol.
 - `JpegTables.kt` — standard JPEG Huffman tables and the RFC 2435
   Q-factor quantization table scaling algorithm.
 - `BwSocketClient.kt` — the camera's plaintext control protocol.
-- `AviMuxer.kt` — minimal Motion-JPEG AVI writer for video recording.
+- `Mp4Recorder.kt` — RGB→YUV420 conversion and H.264/MP4 encoding via
+  `MediaCodec`/`MediaMuxer` for video recording.
+- `NetworkUtils.kt` — binds sockets to the WiFi network explicitly, so
+  the app still reaches the camera when mobile data is also active.
+- `GalleryActivity.kt` — a `GridView` of this app's saved photos/videos,
+  queried directly from `MediaStore` (no extra dependency); tapping an
+  item hands off to whatever viewer/player app is installed via
+  `Intent.ACTION_VIEW`, and long-press deletes.
 - `MainActivity.kt` — live preview (decoded via Android's built-in
   `BitmapFactory`, not a bundled codec), photo capture, video recording,
-  mirror/rotate.
+  mirror/rotate, and the camera-info dialog.
 
 ## Building
 

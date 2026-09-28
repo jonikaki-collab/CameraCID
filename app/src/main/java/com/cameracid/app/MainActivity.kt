@@ -1,19 +1,20 @@
 package com.cameracid.app
 
 import android.content.ContentValues
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.os.Bundle
 import android.os.Environment
+import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
-import android.widget.Button
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -33,8 +34,10 @@ class MainActivity : AppCompatActivity() {
     @Volatile private var rotated180 = false
     @Volatile private var latestJpeg: ByteArray? = null
 
-    private var aviMuxer: AviMuxer? = null
+    private var mp4Recorder: Mp4Recorder? = null
+    private var recordingPfd: ParcelFileDescriptor? = null
     @Volatile private var recording = false
+    private lateinit var btnRecord: ImageButton
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,8 +45,9 @@ class MainActivity : AppCompatActivity() {
 
         previewImage = findViewById(R.id.previewImage)
         statusText = findViewById(R.id.statusText)
+        btnRecord = findViewById(R.id.btnRecord)
 
-        findViewById<Button>(R.id.btnRotate).setOnClickListener {
+        findViewById<ImageButton>(R.id.btnRotate).setOnClickListener {
             // This camera's hardware doesn't support the BWSocket ROTATEIMG command (it
             // replies "501 Not Implemented"). The original app's Rotate button was actually a
             // purely local, client-side 180-degree flip of the rendered video, not a network
@@ -51,28 +55,29 @@ class MainActivity : AppCompatActivity() {
             rotated180 = !rotated180
         }
 
-        findViewById<Button>(R.id.btnMirror).setOnClickListener {
+        findViewById<ImageButton>(R.id.btnMirror).setOnClickListener {
             mirrored = !mirrored
         }
 
-        findViewById<Button>(R.id.btnPhoto).setOnClickListener {
+        findViewById<ImageButton>(R.id.btnPhoto).setOnClickListener {
             takePhoto()
         }
 
-        findViewById<Button>(R.id.btnInfo).setOnClickListener {
+        findViewById<ImageButton>(R.id.btnInfo).setOnClickListener {
             showCameraInfo()
         }
 
-        findViewById<Button>(R.id.btnRecord).setOnClickListener { btn ->
-            if (!recording) {
-                startRecording()
-                (btn as Button).text = "Stop"
-            } else {
-                stopRecording()
-                (btn as Button).text = "Record"
-            }
+        findViewById<ImageButton>(R.id.btnGallery).setOnClickListener {
+            startActivity(Intent(this, GalleryActivity::class.java))
         }
 
+        btnRecord.setOnClickListener {
+            if (!recording) {
+                startRecording()
+            } else {
+                stopRecording()
+            }
+        }
     }
 
     override fun onResume() {
@@ -90,20 +95,51 @@ class MainActivity : AppCompatActivity() {
         if (recording) stopRecording()
     }
 
+    @Volatile private var connectionErrorDialogShowing = false
+
     private fun startStream() {
         rtspClient = RtspClient(
+            context = this,
             host = CAM_HOST,
             port = CAM_PORT,
             path = CAM_PATH,
             onFrame = { jpeg -> handleFrame(jpeg) },
-            onStatus = { status -> runOnUiThread { statusText.text = status } }
+            onStatus = { status -> runOnUiThread { handleStreamStatus(status) } }
         )
         rtspClient?.start()
     }
 
+    private fun handleStreamStatus(status: String) {
+        statusText.text = status
+        if (status.startsWith("Error:") && !connectionErrorDialogShowing && !isFinishing) {
+            connectionErrorDialogShowing = true
+            AlertDialog.Builder(this)
+                .setTitle("Can't reach the camera")
+                .setMessage(
+                    "$status\n\n" +
+                    "Things to try:\n" +
+                    "• Make sure this device is connected to the camera's own WiFi network.\n" +
+                    "• If this device also has mobile data (4G/5G) turned on, Android may be " +
+                    "routing traffic over that instead of WiFi, since the camera's WiFi has no " +
+                    "internet access. Try turning on Airplane Mode, then turn WiFi back on.\n" +
+                    "• Then tap Retry below."
+                )
+                .setPositiveButton("Retry") { _, _ ->
+                    connectionErrorDialogShowing = false
+                    rtspClient?.stop()
+                    startStream()
+                }
+                .setNegativeButton("Dismiss") { _, _ ->
+                    connectionErrorDialogShowing = false
+                }
+                .setCancelable(false)
+                .show()
+        }
+    }
+
     private fun showCameraInfo() {
         Toast.makeText(this, "Querying camera...", Toast.LENGTH_SHORT).show()
-        BwSocketClient.getInfo(CAM_HOST, CAM_PORT) { resp ->
+        BwSocketClient.getInfo(this, CAM_HOST, CAM_PORT) { resp ->
             runOnUiThread {
                 if (resp == null) {
                     AlertDialog.Builder(this)
@@ -146,13 +182,6 @@ class MainActivity : AppCompatActivity() {
     private fun handleFrame(jpeg: ByteArray) {
         latestJpeg = jpeg
 
-        if (recording) {
-            try {
-                aviMuxer?.writeFrame(jpeg)
-            } catch (_: Exception) {
-            }
-        }
-
         // Drop this frame if the UI thread hasn't finished drawing the previous one yet,
         // so we always show the freshest frame instead of backlogging stale ones.
         if (!uiBusy.compareAndSet(false, true)) return
@@ -165,6 +194,13 @@ class MainActivity : AppCompatActivity() {
         if (bitmap == null) {
             uiBusy.set(false)
             return
+        }
+
+        if (recording) {
+            try {
+                mp4Recorder?.encodeBitmap(bitmap)
+            } catch (_: Exception) {
+            }
         }
 
         val toShow = if (mirrored || rotated180) {
@@ -213,13 +249,28 @@ class MainActivity : AppCompatActivity() {
         val jpeg = latestJpeg ?: return
         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size, opts)
-        val dir = File(getExternalFilesDir(Environment.DIRECTORY_MOVIES), "")
-        dir.mkdirs()
-        val file = File(dir, timestampName("avi"))
         try {
-            aviMuxer = AviMuxer(file.absolutePath, opts.outWidth, opts.outHeight, fps = 10)
+            val values = ContentValues().apply {
+                put(MediaStore.Video.Media.DISPLAY_NAME, timestampName("mp4"))
+                put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/CameraCID")
+            }
+            val uri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
+            if (uri == null) {
+                Toast.makeText(this, "Record start failed: could not create file", Toast.LENGTH_SHORT).show()
+                return
+            }
+            val pfd = contentResolver.openFileDescriptor(uri, "rw")
+            if (pfd == null) {
+                Toast.makeText(this, "Record start failed: could not open file", Toast.LENGTH_SHORT).show()
+                return
+            }
+            recordingPfd = pfd
+            mp4Recorder = Mp4Recorder(pfd.fileDescriptor, opts.outWidth, opts.outHeight, fps = 10)
             recording = true
-            Toast.makeText(this, "Recording to ${file.name}", Toast.LENGTH_SHORT).show()
+            btnRecord.setImageResource(R.drawable.ic_stop)
+            btnRecord.setBackgroundResource(R.drawable.bg_circle_button_recording)
+            Toast.makeText(this, "Recording...", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(this, "Record start failed: ${e.message}", Toast.LENGTH_SHORT).show()
         }
@@ -227,13 +278,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun stopRecording() {
         recording = false
+        btnRecord.setImageResource(R.drawable.ic_videocam)
+        btnRecord.setBackgroundResource(R.drawable.bg_circle_button)
         try {
-            aviMuxer?.finish()
+            mp4Recorder?.finish()
             Toast.makeText(this, "Recording saved", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(this, "Save failed: ${e.message}", Toast.LENGTH_SHORT).show()
         } finally {
-            aviMuxer = null
+            mp4Recorder = null
+            try { recordingPfd?.close() } catch (_: Exception) {}
+            recordingPfd = null
         }
     }
 

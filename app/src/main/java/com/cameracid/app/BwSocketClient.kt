@@ -1,5 +1,6 @@
 package com.cameracid.app
 
+import android.content.Context
 import android.util.Log
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -13,11 +14,12 @@ object BwSocketClient {
     private const val PATH = "/webcam"
     private const val PROTO = "APPO/1.0"
 
-    fun sendCommand(host: String, port: Int, command: String, onResult: (String?) -> Unit = {}) {
+    fun sendCommand(context: Context, host: String, port: Int, command: String, onResult: (String?) -> Unit = {}) {
         thread(name = "BwSocketCmd") {
             try {
                 Log.d("BwSocketClient", "connecting to $host:$port for command '$command'")
                 Socket().use { sock ->
+                    NetworkUtils.bindToWifi(context, sock)
                     sock.connect(InetSocketAddress(host, port), 3000)
                     Log.d("BwSocketClient", "connected, sending request")
                     val req = "$command $PATH $PROTO\r\n\r\n"
@@ -37,11 +39,11 @@ object BwSocketClient {
         }
     }
 
-    fun rotateImage(host: String, port: Int, onResult: (String?) -> Unit = {}) =
-        sendCommand(host, port, "ROTATEIMG", onResult)
+    fun rotateImage(context: Context, host: String, port: Int, onResult: (String?) -> Unit = {}) =
+        sendCommand(context, host, port, "ROTATEIMG", onResult)
 
-    fun getInfo(host: String, port: Int, onResult: (String?) -> Unit = {}) =
-        sendCommand(host, port, "GETINFO", onResult)
+    fun getInfo(context: Context, host: String, port: Int, onResult: (String?) -> Unit = {}) =
+        sendCommand(context, host, port, "GETINFO", onResult)
 
     /**
      * Parses the camera's response format (mirrors BWSocket.parseResponseString from the

@@ -1,5 +1,6 @@
 package com.cameracid.app
 
+import android.content.Context
 import java.io.BufferedOutputStream
 import java.io.InputStream
 import java.net.DatagramPacket
@@ -10,6 +11,7 @@ import java.util.regex.Pattern
 import kotlin.concurrent.thread
 
 class RtspClient(
+    private val context: Context,
     private val host: String,
     private val port: Int,
     private val path: String,
@@ -40,6 +42,7 @@ class RtspClient(
     private fun runSession() {
         try {
             val sock = Socket()
+            NetworkUtils.bindToWifi(context, sock)
             sock.connect(InetSocketAddress(host, port), 5000)
             tcpSocket = sock
             val out = BufferedOutputStream(sock.getOutputStream())
@@ -64,7 +67,10 @@ class RtspClient(
             val trackUrl = if (control.startsWith("rtsp://")) control
                 else contentBase.trimEnd('/') + "/" + control.trimStart('/')
 
-            rtpSocket = DatagramSocket(0).apply { receiveBufferSize = 4 * 1024 * 1024 }
+            rtpSocket = DatagramSocket(0).apply {
+                receiveBufferSize = 4 * 1024 * 1024
+                NetworkUtils.bindToWifi(context, this)
+            }
             val rtpPort = rtpSocket!!.localPort
             var rtcpPort = rtpPort + 1
             rtcpSocket = try {
@@ -73,6 +79,7 @@ class RtspClient(
                 DatagramSocket(0).also { rtcpPort = it.localPort }
             }
             rtcpSocket!!.receiveBufferSize = 1 * 1024 * 1024
+            NetworkUtils.bindToWifi(context, rtcpSocket!!)
 
             onStatus("Setting up transport...")
             sendRequest(out, trackUrl, "SETUP", "Transport: RTP/AVP;unicast;client_port=$rtpPort-$rtcpPort\r\n")
