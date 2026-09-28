@@ -1,5 +1,6 @@
 package com.cameracid.app
 
+import android.util.Log
 import java.net.InetSocketAddress
 import java.net.Socket
 import kotlin.concurrent.thread
@@ -15,8 +16,10 @@ object BwSocketClient {
     fun sendCommand(host: String, port: Int, command: String, onResult: (String?) -> Unit = {}) {
         thread(name = "BwSocketCmd") {
             try {
+                Log.d("BwSocketClient", "connecting to $host:$port for command '$command'")
                 Socket().use { sock ->
                     sock.connect(InetSocketAddress(host, port), 3000)
+                    Log.d("BwSocketClient", "connected, sending request")
                     val req = "$command $PATH $PROTO\r\n\r\n"
                     sock.getOutputStream().write(req.toByteArray(Charsets.US_ASCII))
                     sock.getOutputStream().flush()
@@ -24,9 +27,11 @@ object BwSocketClient {
                     val buf = ByteArray(4096)
                     val n = sock.getInputStream().read(buf)
                     val resp = if (n > 0) String(buf, 0, n, Charsets.US_ASCII) else null
+                    Log.d("BwSocketClient", "response (n=$n): ${resp?.replace("\r", "\\r")?.replace("\n", "\\n")}")
                     onResult(resp)
                 }
             } catch (e: Exception) {
+                Log.e("BwSocketClient", "exception: ${e.javaClass.simpleName}: ${e.message}")
                 onResult(null)
             }
         }

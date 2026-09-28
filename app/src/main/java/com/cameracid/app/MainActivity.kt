@@ -29,6 +29,7 @@ class MainActivity : AppCompatActivity() {
     private var rtspClient: RtspClient? = null
 
     @Volatile private var mirrored = false
+    @Volatile private var rotated180 = false
     @Volatile private var latestJpeg: ByteArray? = null
 
     private var aviMuxer: AviMuxer? = null
@@ -42,11 +43,11 @@ class MainActivity : AppCompatActivity() {
         statusText = findViewById(R.id.statusText)
 
         findViewById<Button>(R.id.btnRotate).setOnClickListener {
-            BwSocketClient.rotateImage(CAM_HOST, CAM_PORT) { resp ->
-                runOnUiThread {
-                    Toast.makeText(this, if (resp != null) "Rotated" else "Rotate failed", Toast.LENGTH_SHORT).show()
-                }
-            }
+            // This camera's hardware doesn't support the BWSocket ROTATEIMG command (it
+            // replies "501 Not Implemented"). The original app's Rotate button was actually a
+            // purely local, client-side 180-degree flip of the rendered video, not a network
+            // call -- so that's what this replicates.
+            rotated180 = !rotated180
         }
 
         findViewById<Button>(R.id.btnMirror).setOnClickListener {
@@ -121,8 +122,11 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val toShow = if (mirrored) {
-            val m = Matrix().apply { preScale(-1f, 1f) }
+        val toShow = if (mirrored || rotated180) {
+            val m = Matrix().apply {
+                if (mirrored) preScale(-1f, 1f)
+                if (rotated180) postRotate(180f)
+            }
             Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, m, true)
         } else bitmap
 
