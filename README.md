@@ -1,9 +1,10 @@
 # CameraCID
 
 A from-scratch, binary-blob-free Android viewer for cheap WiFi endoscope/IP
-cameras (originally shipped with the "YCamera"/"GoSky" app, package
-`cn.com.buildwin.YCamera3`). Pure Kotlin — no vendor native library, no
-bundled FFmpeg/ijkplayer `.so`, no NDK code at all.
+cameras — originally shipped as the **"YPC99"** wireless endoscope (the
+model name printed on the device itself), running the "YCamera"/"GoSky"
+app, package `cn.com.buildwin.YCamera3`. Pure Kotlin — no vendor native
+library, no bundled FFmpeg/ijkplayer `.so`, no NDK code at all.
 
 ## Why this exists
 
