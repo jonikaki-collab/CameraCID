@@ -113,6 +113,13 @@ live, changeable orientation state — consistent with `ROTATEIMG` being
 unimplemented on this unit and no `SETSENSORDIRECTION`-style command
 existing anywhere in the protocol.
 
+The chip itself checks out too: [Appotech's own product page](https://www.en.appotech.com/MPdecoderchip-5.html)
+lists the AX3268 as supporting up to **1280x720@40fps**, with **"Wi-Fi
+aerial photography" (drone)** and "IP CAM" as its listed applications —
+independent, chip-manufacturer-side confirmation of the drone-SDK-rebrand
+finding below, and the reason we went looking for a hidden higher-
+resolution command (see the next section).
+
 ## Other undocumented features found in the original app
 
 - **`RESETNET` is a live, fully wired protocol command with no UI trigger
@@ -148,6 +155,51 @@ existing anywhere in the protocol.
   (checkbox selection + "select all"), shared by `PhotoListActivity` and
   `VideoListActivity` via a common base class. Minor, but not previously
   documented here.
+
+## An untested lead: a real resolution-setting protocol exists in GoSky
+
+The chip datasheet for this camera's silicon (Appotech AX3268) claims a
+maximum of 1280x720@40fps — well above the 640x480 this product actually
+streams. Live `GETINFO` also returns `PIXEL: 0` and `QUALITY: 2`, two
+fields no command in the app ever sets. Digging into the newer GoSky
+5.2.1 app (same vendor, still maintained) turned up why: GoSky has a
+**second, separate binary protocol** on TCP port **5000** (not 7070),
+completely independent of the plaintext BWSocket/RTSP protocol this
+README otherwise documents.
+
+Wire format (`TCPMessage`/`MessageCenter` in GoSky's decompiled source):
+`[4-byte big-endian length][1-byte messageId][1-byte sessionId][2
+reserved bytes][content]`, sent to `192.168.1.1:5000`. Relevant message
+IDs:
+
+```
+MSG_ID_PREVIEW_RESOLUTION = 8    (0=SD, 1=HD, 2=FHD)
+MSG_ID_VIDEO_RESOLUTION   = 16   (0=SD, 1=HD, 2=FHD)
+MSG_ID_PHOTO_RESOLUTION   = 24   (0=SD, 1=HD, 2=FHD, 3=QHD, 4=UHD)
+MSG_ID_PREVIEW_QUALITY    = 9    (0=LOW, 1=MID, 2=HIGH)
+MSG_ID_VIDEO_QUALITY      = 17   (0=LOW, 1=MID, 2=HIGH)
+MSG_ID_PHOTO_QUALITY      = 25   (0=LOW, 1=MID, 2=HIGH)
+```
+
+Plus roughly 30 more IDs for white balance, ISO, sharpness, WDR, motion
+detection, date stamp, factory reset, format card, etc. — this reads as
+the full generic Appotech action-cam/drone reference SDK protocol, far
+beyond what this cheap endoscope product needs.
+
+**Important caveat**: even GoSky's own shipped app never calls
+`sendMessagePreviewResolution()`/`sendMessageVideoResolution()`/
+`sendMessagePhotoResolution()` from any UI — the methods exist and are
+fully wired to `MessageCenter`, which *does* always connect to port 5000
+on app startup, but nothing in GoSky's own Settings screen actually sends
+these messages. Same dead-API pattern as `RESETNET` above.
+
+This has **not** been tested against the real camera — we don't know
+whether this specific unit's firmware even accepts a connection on port
+5000, let alone honors these message IDs. It's left here as a fully
+specified, ready-to-try lead rather than a confirmed capability. If it
+does work, the safe way to check would be: TCP connect to port 5000, and
+if accepted, send `MSG_ID_PREVIEW_RESOLUTION=1` (HD) while watching
+whether the RTSP stream's actual resolution changes.
 
 ## Connecting over WiFi + mobile data at the same time
 
