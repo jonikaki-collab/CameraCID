@@ -190,7 +190,7 @@ resolution command (see the next section).
   `VideoListActivity` via a common base class. Minor, but not previously
   documented here.
 
-## An untested lead: a real resolution-setting protocol exists in GoSky
+## A resolution-setting protocol exists in GoSky — but not on this unit
 
 The chip datasheet for this camera's silicon (Appotech AX3268) claims a
 maximum of 1280x720@40fps — well above the 640x480 this product actually
@@ -227,13 +227,16 @@ fully wired to `MessageCenter`, which *does* always connect to port 5000
 on app startup, but nothing in GoSky's own Settings screen actually sends
 these messages. Same dead-API pattern as `RESETNET` above.
 
-This has **not** been tested against the real camera — we don't know
-whether this specific unit's firmware even accepts a connection on port
-5000, let alone honors these message IDs. It's left here as a fully
-specified, ready-to-try lead rather than a confirmed capability. If it
-does work, the safe way to check would be: TCP connect to port 5000, and
-if accepted, send `MSG_ID_PREVIEW_RESOLUTION=1` (HD) while watching
-whether the RTSP stream's actual resolution changes.
+**Update: tested, and this unit doesn't have it.** A direct connection
+attempt to port 5000 gets an immediate TCP RST ("actively refused," not a
+timeout) — confirmed twice, both with a dedicated probe script and
+independently with a general port scan of the camera's other commonly-
+used ports (`21-55555` range; nothing open except `7070`). This firmware
+build genuinely doesn't expose GoSky's binary protocol at all. The
+resolution/quality-setting commands above are real and fully specified,
+but they belong to whatever hardware/firmware GoSky's own product line
+ships, not this one. Left here for reference in case it's useful for a
+different unit, but not applicable to this specific camera.
 
 ## Connecting over WiFi + mobile data at the same time
 
