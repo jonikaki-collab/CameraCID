@@ -31,6 +31,40 @@ camera control) in plain Kotlin, so it never depends on a proprietary
   (`COMMAND /webcam APPO/1.0\r\n\r\n`), e.g. `GETINFO`, `SETSSID`,
   `RESETNET`, `RECSTART`/`RECSTOP`, `ROTATEIMG`.
 
+## Known security issues (this is the same hardware as other rebrands)
+
+This camera is not a one-off design — it's a white-label Appotech AX3268
+reference module sold under many different brand names. [Security
+research published on the "Kerui" endoscope
+camera](https://utkusen.com/blog/multiple-vulnerabilities-on-kerui-endoscope-camera)
+(July 2018) describes the **identical** hardware and protocol: same chip,
+same `APPO/1.0` protocol on port 7070, same firmware version naming
+scheme (`EVJ-2_20180329` there vs. this unit's `EVJ-2_20190415a` — same
+family, later build), and the same "starts with endoscope" WiFi SSID
+convention (this unit's is literally `Endoscope_abadaf`). This is almost
+certainly the same firmware lineage, not just similar hardware.
+
+That disclosure documents:
+
+- **No WiFi password by default** — the camera's own hotspot is
+  unprotected, so anyone in range can join and access the stream/control
+  protocol.
+- **No authentication anywhere** — neither the RTSP stream nor the
+  plaintext control protocol requires any credential; anyone who can join
+  the WiFi can send any command.
+- **Command injection via `SETSSID`** — a crafted SSID value (e.g.
+  `;ping 192.168.1.101`) can execute arbitrary shell commands on the
+  camera itself (blind RCE), limited only by the WiFi SSID's 32-character
+  field. This is presumably still present in this unit's firmware, since
+  it's a later build of the same lineage, not a rewrite.
+
+CameraCID never implements `SETSSID` (or any WiFi-configuration feature)
+precisely to avoid touching this — see "APN setting — not found" above
+for the related decision not to build WiFi-config features into this app
+at all. But the vulnerability lives in the **camera's firmware**, not in
+any particular client app, so it's exploitable by anyone on the network
+regardless of what app they use, including the original vendor app.
+
 ## Resolution: what "640x480 / 1280x720 / 1600x1200" on the box actually means
 
 The original app's Settings screen lets you pick one of these three
